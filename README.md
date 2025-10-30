@@ -72,79 +72,94 @@ This document provides a comprehensive explanation of every layer, node, and int
 ```mermaid
 flowchart TD
 
-%% ================= MASTER NODE ==================
-    subgraph Master["🧠 MASTER AGENT NODE"]
-        M1["Task Router<br/>(Routing & Load Balancer)"]
-        M2["Policy Engine<br/>(Rules · Model Routing · Limits)"]
-        M3["Evaluation Agent<br/>(QA · Accuracy · Scoring)"]
-        M4["Guardrails<br/>(Safety · PII · Ethics)"]
-        M1 -->|Directs Workflows| M2
-        M2 -->|Policy Controls| M4
-        M2 -->|Confidence < 0.7| M3
+%% ===== Master & Agents =====
+    subgraph MASTER["🧠 Master Agent Node"]
+        R["Task Router"]
+        P["Policy Engine<br/>(rules, rate limits, budgets)"]
+        EVAL["Evaluation Agent<br/>(QA, scoring)"]
+        GR_GLOBAL["Global Guardrails<br/>(safety, PII, compliance)"]
+        R --> P
+        P --> GR_GLOBAL
+        P --> EVAL
     end
 
-%% ================= AGENTS ==================
-    subgraph Agents["🤖 Worker Agents"]
-        A1["Retrieval Agent (RAG)<br/>(Hybrid Search · VectorDB)"]
-        A2["Reasoning Agent (LLM)<br/>(Multi-Step Reasoning)"]
-        A3["Summarization Agent<br/>(Compression · Relevance)"]
-        A4["Safety Agent<br/>(Moderation · Compliance)"]
-        A5["Tool/API Agent<br/>(External Actions · Tool Use)"]
-        A1 --> A2 --> A3 --> A4 --> A5
+    subgraph AGENTS["🤖 Worker Agents"]
+        RETR["Retrieval Agent (RAG)"]
+        REAS["Reasoning Agent (LLM)"]
+        SUMM["Summarization Agent"]
+        SAFE["Safety Agent"]
+        TOOL["Tool/API Agent"]
+        RETR --> REAS --> SUMM --> SAFE
     end
 
-%% ================= COMMUNICATION LAYER ==================
-    subgraph Bus["🔄 Communication Bus"]
-        B1["Async Message Passing<br/>(Kafka · RabbitMQ · gRPC Mesh)"]
+%% ===== Bus & Data =====
+    subgraph BUS["🔄 Communication Bus"]
+        MQ["Kafka / RabbitMQ / gRPC Mesh"]
+    end
+    REAS --> MQ
+    MQ --> TOOL
+
+    subgraph DATA["💾 Data & State"]
+        CACHE["Cache (Redis)"]
+        MEM["Session/State (Redis/DB)"]
+        VDB["Vector DB / Index"]
+        LOGS["Logs & Observability (Prom/Graf/OTel)"]
+        FB["Feedback Loop (retrain, prompts, embeddings)"]
+        EVAL_L["Evaluation Layer (RAGAS · DeepEval · AgentBench)"]
+        CACHE --> VDB
+        MEM --> VDB
+        LOGS --> FB
+        EVAL_L --> FB
     end
 
-%% ================= DATA LAYERS ==================
-    subgraph Data["💾 Data & State Layers"]
-        D1["Cache Layer<br/>(Redis / Memcached)"]
-        D2["Memory Layer<br/>(Redis / PostgreSQL Shared State)"]
-        D3["Vector DB / Index<br/>(FAISS · Qdrant · Pinecone)"]
-        D4["Logs & Observability<br/>(Prometheus · Grafana · OpenTelemetry)"]
-        D5["Feedback Loop<br/>(Retraining · Fine-Tuning · Eval Refresh)"]
-        D6["Evaluation Layer<br/>(RAGAS · DeepEval · AgentBench)"]
-        D1 --> D3
-        D2 --> D3
-        D3 --> D4
-        D4 --> D5
-        D5 --> D6
+%% ===== Tool/API Execution with Guardrails & Checks =====
+    subgraph TOOLFLOW["🔧 Tool/API Execution Pipeline"]
+        direction LR
+        PRE_GUARD["Pre-Action Guardrail<br/>(policy, PII, jailbreak)"]
+        PLAN["Action Plan & Params<br/>(schema build, auth, idempotency key)"]
+        RATE["RateLimiter / CircuitBreaker"]
+        CALL["External API Call"]
+        STATUS{"Executed successfully?"}
+        PARSE["Parse & Normalize<br/>(JSON schema, types, units)"]
+        POST_GUARD["Post-Action Guardrail<br/>(schema, safety, provenance)"]
+        VERIFY{"Result validated?<br/>(contracts, checksums, business rules)"}
+        COMMIT["Commit Result<br/>(memory/state + cache + logs)"]
+        RETRY["Retry with Backoff"]
+        FALLBACK["Fallback Strategy<br/>(alternate tool/model)"]
+        ESC["Escalate / Human-in-the-loop"]
+
+        PRE_GUARD --> PLAN --> RATE --> CALL --> STATUS
+        STATUS -- "No" --> RETRY --> STATUS
+        STATUS -- "Still failing" --> FALLBACK --> STATUS
+        STATUS -- "Hard fail" --> ESC
+        STATUS -- "Yes" --> PARSE --> POST_GUARD --> VERIFY
+        VERIFY -- "No" --> RETRY
+        VERIFY -- "Yes" --> COMMIT
     end
 
-%% ================= DEPLOYMENT ==================
-    subgraph Deploy["⚙️ Deployment & Scaling Layer"]
-        DEP1["Containerized Agents<br/>(Docker · Kubernetes)"]
-        DEP2["Autoscaling & Routing<br/>(HPA · Model Switcher)"]
-        DEP3["Observability Stack<br/>(Prometheus · Grafana · ELK)"]
-        DEP4["CI/CD & IaC<br/>(Prefect · Airflow · Terraform · Helm)"]
-        DEP5["Backups & Recovery<br/>(S3 · GCS · Snapshots)"]
-    end
+%% ===== Wiring to the rest of the system =====
+    TOOL --> PRE_GUARD
+    COMMIT --> LOGS
+    COMMIT --> MEM
+    COMMIT --> CACHE
+    POST_GUARD --> SAFE
+    COMMIT --> REAS
+    EVAL --> EVAL_L
+    SAFE --> GR_GLOBAL
+    FB --> P
 
-%% ================= CONNECTIONS ==================
-    Master --> Agents
-    Agents --> Bus
-    Bus --> Data
-    Data --> Deploy
-    D6 --> Master
-    D5 --> Agents
-    M3 --> D6
-    M4 --> A4
-    M2 --> Agents
-
-%% ================= STYLES ==================
+%% ===== Styling =====
     classDef master fill:#e0f2ff,stroke:#0077b6,stroke-width:1px,color:#000;
     classDef agents fill:#f7e8ff,stroke:#8e44ad,stroke-width:1px,color:#000;
     classDef bus fill:#e8ffe8,stroke:#2a9d8f,stroke-width:1px,color:#000;
     classDef data fill:#fff6e0,stroke:#e9c46a,stroke-width:1px,color:#000;
-    classDef deploy fill:#f0e68c,stroke:#b8860b,stroke-width:1px,color:#000;
+    classDef toolflow fill:#fef3c7,stroke:#b45309,stroke-width:1px,color:#000;
+    class MASTER master;
+    class AGENTS agents;
+    class BUS bus;
+    class DATA data;
+    class TOOLFLOW toolflow;
 
-    class Master master;
-    class Agents agents;
-    class Bus bus;
-    class Data data;
-    class Deploy deploy;
 ```
 ---
 
