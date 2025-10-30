@@ -68,6 +68,13 @@ This document provides a comprehensive explanation of every layer, node, and int
 
 ```
 ---
+## ⚙️ Edge Semantics
+
+| **Edge Type** | **Meaning**                  | **Example**                                 |
+|----------------|------------------------------|---------------------------------------------|
+| **Solid (—)**  | Deterministic flow            | Master → Router → Worker → Bus              |
+| **Dashed (⋯)** | Conditional routing           | Low-confidence → Secondary Retriever        |
+| **Double Arrow (⇄)** | Feedback / co-operative link | Evaluator ⇄ Master, Safety ⇄ Worker |
 
 ---
 
